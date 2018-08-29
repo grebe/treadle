@@ -6,6 +6,8 @@ import firrtl.ir.Info
 import org.json4s._
 import org.json4s.native.JsonMethods._
 import org.json4s.JsonDSL._
+import org.objectweb.asm._
+import org.objectweb.asm.Opcodes._
 import treadle.ScalaBlackBox
 import treadle.utils.Render
 
@@ -152,23 +154,86 @@ extends HasDataArrays {
     def apply(): Int = intData(index)
   }
 
-  case class AssignInt(symbol: Symbol, expression: FuncInt, info: Info) extends Assigner {
-    val index: Int = symbol.index
+  class MyClassLoader extends ClassLoader {
+    def defineClass(name: String, b: Array[Byte]): Class[_] = {
+      defineClass(name, b, 0, b.length)
+    }
+  }
 
-    def runLean(): Unit = {
-      intData(index) = expression()
+  case class AssignInt(symbol: Symbol, expression: FuncInt, info: Info, expressionCompiler: Option[MethodVisitor => Unit] = None) extends Assigner {
+    val index: Int = symbol.index
+    lazy val compiledAssigner = {
+      println(s"Compiling AssignInt for ${symbol}")
+      compile()
+    }
+    def compile(): CompiledAssigner = {
+      val cw = new ClassWriter(ClassWriter.COMPUTE_MAXS)
+      val cl = new MyClassLoader()
+      compileClass(cw)
+      val b = cw.toByteArray()
+      val c: Class[_] = cl.defineClass(s"treadle.executable.CompiledAssignInt${index}", b)
+      val ctor = c.getConstructor()
+      ctor.newInstance().asInstanceOf[CompiledAssigner]
     }
 
+    def compileClass(cw: ClassWriter): Unit = {
+      // make class that extends assigner
+      val selfName = s"treadle/executable/CompiledAssignInt${index}"
+      val intName = Type.getType(classOf[CompiledAssigner]).getInternalName() //getDescriptor()
+      println(s"intName = ${intName}")
+      cw.visit(
+        V1_8,
+        ACC_PUBLIC + ACC_FINAL,
+        selfName,
+        null,
+        intName, //"java/lang/Object", // "treadle/executable/CompiledAssigner$",
+        null, //Array(intName), //"treadle/executable/package$CompiledAssigner")
+      )
+      // add datastore
+      cw.visitField(ACC_PUBLIC, "intData", "[I", null, null)
+      // add run method
+      val mv = cw.visitMethod(ACC_PUBLIC /*+ ACC_ABSTRACT*/, "runCompiled", "()V", null, null)
+      mv.visitCode()
+      compileMethod(mv, selfName= selfName)
+      mv.visitMaxs(0, 0)
+      cw.visitEnd()
+    }
+    def compileMethod(mv: MethodVisitor, selfName: String): Unit = {
+      val owner = selfName
+      // val owner = "treadle/executable/package$CompiledAssigner"
+      // Type.getType(classOf[CompiledAssigner]).getDescriptor()
+      println(s"owner = ${owner}")
+      mv.visitVarInsn(ALOAD, 0)
+      mv.visitFieldInsn(GETFIELD, owner, "intData", "[I")
+      mv.visitLdcInsn(index)
+      expressionCompiler match {
+        case Some(e) => e(mv)
+        case None =>
+          val expressionInternalName = Type.getType(classOf[FuncInt]).getInternalName()
+          val expressionDescriptor = Type.getType(classOf[FuncInt]).getDescriptor()
+          val unitDescriptor = Type.getType(Unit.getClass).getDescriptor()
+          mv.visitVarInsn(ALOAD, 0)
+          mv.visitFieldInsn(GETFIELD, owner, "intFunc", expressionDescriptor)
+          mv.visitMethodInsn(INVOKEVIRTUAL, expressionInternalName, "apply", "()" + unitDescriptor, false)
+      }
+      mv.visitInsn(IASTORE)
+    }
+
+    def runCompiled(): Unit = compiledAssigner.runCompiled
+    def runLean(): Unit = { runCompiled()}
+    //intData(index) = expression() }
+
     def runFull(): Unit = {
-      val value = expression()
-      intData(index) = value
-      runPlugins(symbol)
+      runCompiled()
+      // val value = expression()
+      // intData(index) = value
+      // runPlugins(symbol)
     }
 
     override def setLeanMode(isLean: Boolean): Unit = {
-      run = if(isLean) runLean else runFull
+      // run = if(isLean) runLean else runFull
     }
-    var run: FuncUnit = runLean
+    var run: FuncUnit = runCompiled //runLean
   }
 
   case class TriggerConstantAssigner(

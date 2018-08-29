@@ -69,7 +69,7 @@ object treadle extends Cross[TreadleModule](crossVersions: _*) {
 }
 
 // Provide a managed dependency on X if -DXVersion="" is supplied on the command line.
-val defaultVersions = Map("firrtl" -> "1.2-SNAPSHOT")
+val defaultVersions = Map("firrtl" -> "1.1.2")
 
 def getVersion(dep: String, org: String = "edu.berkeley.cs") = {
   val version = sys.env.getOrElse(dep + "Version", defaultVersions(dep))
@@ -79,11 +79,14 @@ def getVersion(dep: String, org: String = "edu.berkeley.cs") = {
 class TreadleModule(val crossScalaVersion: String) extends CommonModule {
   override def artifactName = "treadle"
 
+  override def mainClass = Some("treadle.TreadleRepl")
+
   def chiselDeps = Agg("firrtl").map { d => getVersion(d) }
 
   override def ivyDeps = Agg(
     ivy"org.scala-lang.modules:scala-jline:2.12.1",
-    ivy"org.json4s::json4s-native:3.5.3"
+    ivy"org.json4s::json4s-native:3.5.3",
+    ivy"org.ow2.asm:asm:6.2.1",
   ) ++ chiselDeps
 
   object test extends Tests {

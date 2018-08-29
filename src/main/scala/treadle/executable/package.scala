@@ -3,6 +3,7 @@
 package treadle
 
 import firrtl.ir.Info
+//import org.objectweb.asm.ClassWriter
 
 package object executable {
   type Big = BigInt
@@ -18,10 +19,17 @@ package object executable {
   type FuncBig  = () => Big
   type FuncUnit = () => Unit
 
+  abstract class CompiledAssigner {
+    var intData: Array[Int]
+    var intFunc: FuncInt
+    def runCompiled // void function
+  }
+
   trait Assigner {
     val symbol: Symbol
     val info: Info
     def run: FuncUnit
+    // def compile(cw: ClassWriter): Unit
     def render: String = symbol.render
 
     def setLeanMode(isLean: Boolean): Unit = {}
