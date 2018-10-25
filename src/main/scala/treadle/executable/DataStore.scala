@@ -3,15 +3,29 @@
 package treadle.executable
 
 import firrtl.ir.Info
+import java.io.{FileOutputStream, PrintWriter}
 import org.json4s._
 import org.json4s.native.JsonMethods._
 import org.json4s.JsonDSL._
 import org.objectweb.asm._
 import org.objectweb.asm.Opcodes._
+import org.objectweb.asm.util.{ASMifier, TraceClassVisitor}
 import treadle.ScalaBlackBox
 import treadle.utils.Render
 
 import scala.collection.mutable
+
+abstract class CompiledAssigner {
+  var intData: Array[Int] = null
+  var intFunc: FuncInt = null
+  def runCompiled // void function
+}
+
+class MyClassLoader(cl: ClassLoader) extends java.net.URLClassLoader(Array[java.net.URL](), cl) {
+  def defineClass(name: String, b: Array[Byte]): Class[_] = {
+    defineClass(name, b, 0, b.length)
+  }
+}
 
 /**
   * Creates a data store for the three underlying data types.
@@ -154,72 +168,100 @@ extends HasDataArrays {
     def apply(): Int = intData(index)
   }
 
-  class MyClassLoader extends ClassLoader {
-    def defineClass(name: String, b: Array[Byte]): Class[_] = {
-      defineClass(name, b, 0, b.length)
-    }
-  }
-
   case class AssignInt(symbol: Symbol, expression: FuncInt, info: Info, expressionCompiler: Option[MethodVisitor => Unit] = None) extends Assigner {
     val index: Int = symbol.index
-    lazy val compiledAssigner = {
+    lazy val compiledAssigner: CompiledAssigner = {
       println(s"Compiling AssignInt for ${symbol}")
-      compile()
+      val assigner = compile()
+      assigner.intData = intData
+      assigner
+    }
+    def printClass(bs: Array[Byte]): Unit = {
+      val reader = new ClassReader(bs)
+      reader.accept(new TraceClassVisitor(null, new ASMifier(), new PrintWriter(System.out)), ClassReader.EXPAND_FRAMES)
+    }
+    def writeClass(bs: Array[Byte]): Unit = {
+      val stream = new FileOutputStream("out.class")
+      stream.write(bs)
+      stream.close()
     }
     def compile(): CompiledAssigner = {
       val cw = new ClassWriter(ClassWriter.COMPUTE_MAXS)
-      val cl = new MyClassLoader()
+      val cl = new MyClassLoader(Thread.currentThread().getContextClassLoader())
       compileClass(cw)
       val b = cw.toByteArray()
-      val c: Class[_] = cl.defineClass(s"treadle.executable.CompiledAssignInt${index}", b)
-      val ctor = c.getConstructor()
-      ctor.newInstance().asInstanceOf[CompiledAssigner]
+      printClass(b)
+      writeClass(b)
+      println("Class printed")
+      val c: Class[_] = cl.defineClass(null, /*s"treadle.executable.CompiledAssignInt${index}",*/ b)
+      // val ctor = c.getConstructor()
+      c.newInstance().asInstanceOf[CompiledAssigner]
+      // ctor.newInstance().asInstanceOf[CompiledAssigner]
     }
 
     def compileClass(cw: ClassWriter): Unit = {
       // make class that extends assigner
       val selfName = s"treadle/executable/CompiledAssignInt${index}"
-      val intName = Type.getType(classOf[CompiledAssigner]).getInternalName() //getDescriptor()
-      println(s"intName = ${intName}")
+      val intName = Type.getType(classOf[CompiledAssigner]).getInternalName()
+      // println("intName = $intName")
       cw.visit(
         V1_8,
-        ACC_PUBLIC + ACC_FINAL,
+        ACC_PUBLIC , //+ ACC_FINAL,
         selfName,
-        null,
-        intName, //"java/lang/Object", // "treadle/executable/CompiledAssigner$",
+        null, //intName, // null,
+        intName, // "treadle/executable/CompiledAssigner", //"java/lang/Object", // "treadle/executable/CompiledAssigner$",
         null, //Array(intName), //"treadle/executable/package$CompiledAssigner")
       )
       // add datastore
-      cw.visitField(ACC_PUBLIC, "intData", "[I", null, null)
+      // cw.visitField(ACC_PUBLIC, "intData", "[I", null, null)
       // add run method
-      val mv = cw.visitMethod(ACC_PUBLIC /*+ ACC_ABSTRACT*/, "runCompiled", "()V", null, null)
+      val mv = cw.visitMethod(ACC_PUBLIC /*+ ACC_ABSTRACT*/, "runCompiled", s"()V", null, null)
       mv.visitCode()
       compileMethod(mv, selfName= selfName)
       mv.visitMaxs(0, 0)
+      mv.visitEnd()
+
+      val cmv = cw.visitMethod(ACC_PUBLIC, "<init>", "()V", null, null)
+      cmv.visitCode()
+      cmv.visitVarInsn(ALOAD, 0)
+      cmv.visitMethodInsn(INVOKESPECIAL, "treadle/executable/CompiledAssigner", "<init>", "()V", false)
+      cmv.visitInsn(RETURN)
+      cmv.visitMaxs(0,0)
+      cmv.visitEnd()
+
       cw.visitEnd()
     }
     def compileMethod(mv: MethodVisitor, selfName: String): Unit = {
       val owner = selfName
       // val owner = "treadle/executable/package$CompiledAssigner"
       // Type.getType(classOf[CompiledAssigner]).getDescriptor()
-      println(s"owner = ${owner}")
+      // println(s"owner = ${owner}")
+      mv.visitLdcInsn(5)
+      mv.visitLdcInsn(index)
       mv.visitVarInsn(ALOAD, 0)
       mv.visitFieldInsn(GETFIELD, owner, "intData", "[I")
-      mv.visitLdcInsn(index)
-      expressionCompiler match {
-        case Some(e) => e(mv)
-        case None =>
-          val expressionInternalName = Type.getType(classOf[FuncInt]).getInternalName()
-          val expressionDescriptor = Type.getType(classOf[FuncInt]).getDescriptor()
-          val unitDescriptor = Type.getType(Unit.getClass).getDescriptor()
-          mv.visitVarInsn(ALOAD, 0)
-          mv.visitFieldInsn(GETFIELD, owner, "intFunc", expressionDescriptor)
-          mv.visitMethodInsn(INVOKEVIRTUAL, expressionInternalName, "apply", "()" + unitDescriptor, false)
-      }
-      mv.visitInsn(IASTORE)
+      mv.visitVarInsn(IASTORE, 0)
+      mv.visitInsn(RETURN)
+      // expressionCompiler match {
+      //   case Some(e) => e(mv)
+      //   case None =>
+      //     mv.visitLdcInsn(5)
+          // val expressionInternalName = Type.getType(classOf[FuncInt]).getInternalName()
+          // val expressionDescriptor = Type.getType(classOf[FuncInt]).getDescriptor()
+          // val unitDescriptor = Type.getType(Unit.getClass).getDescriptor()
+          // mv.visitVarInsn(ALOAD, 0)
+          // mv.visitFieldInsn(GETFIELD, owner, "intFunc", expressionDescriptor)
+          // mv.visitMethodInsn(INVOKEVIRTUAL, expressionInternalName, "apply", "()" + "I" /*unitDescriptor*/, false)
+      // }
+      // mv.visitInsn(IASTORE)
     }
 
-    def runCompiled(): Unit = compiledAssigner.runCompiled
+    def runCompiled(): Unit = {
+      val c = classOf[CompiledAssigner]
+      val m = c.getDeclaredMethod("runCompiled")
+      m.invoke(compiledAssigner)
+      // compiledAssigner.runCompiled
+    }
     def runLean(): Unit = { runCompiled()}
     //intData(index) = expression() }
 

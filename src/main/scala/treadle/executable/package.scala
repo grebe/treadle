@@ -19,12 +19,6 @@ package object executable {
   type FuncBig  = () => Big
   type FuncUnit = () => Unit
 
-  abstract class CompiledAssigner {
-    var intData: Array[Int]
-    var intFunc: FuncInt
-    def runCompiled // void function
-  }
-
   trait Assigner {
     val symbol: Symbol
     val info: Info
