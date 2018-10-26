@@ -198,7 +198,7 @@ class ExpressionCompiler(
 
       def handleIntResult(e1: IntExpressionResult, e2: IntExpressionResult): ExpressionResult = {
         opCode match {
-          case Add => AddInts(e1.apply, e2.apply)
+          case Add => AddInts(e1.apply, e2.apply, e1.expressionCompiler, e2.expressionCompiler)
           case Sub => SubInts(e1.apply, e2.apply)
           case Mul => MulInts(e1.apply, e2.apply)
           case Div => DivInts(e1.apply, e2.apply)
