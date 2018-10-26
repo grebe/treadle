@@ -46,7 +46,12 @@ resolvers ++= Seq(
 val defaultVersions = Map("firrtl" -> "1.2-SNAPSHOT")
 
 libraryDependencies ++= (Seq("firrtl").map {
-  dep: String => "edu.berkeley.cs" %% dep % sys.props.getOrElse(dep + "Version", defaultVersions(dep)) }) ++ Seq("org.ow2.asm" % "asm" % "6.2.1", "org.ow2.asm" % "asm-util" % "4.0", "org.ow2.asm" % "asm-all" % "5.2")
+  dep: String => "edu.berkeley.cs" %% dep % sys.props.getOrElse(dep + "Version", defaultVersions(dep)) }) ++
+  Seq(
+    // "org.ow2.asm" % "asm" % "6.2.1",
+    // "org.ow2.asm" % "asm-util" % "4.0",
+    "org.ow2.asm" % "asm-all" % "5.2",
+  )
 
 libraryDependencies ++= Seq(
   "org.scalatest" %% "scalatest" % "3.0.1",

@@ -89,7 +89,7 @@ class ExpressionCompiler(
           dataStore.TriggerExpressionAssigner(symbol, scheduler, result.apply, triggerOnValue = 1, info)
         }
         else {
-          dataStore.AssignInt(symbol, result.apply, info)
+          dataStore.AssignInt(symbol, result.apply, info, result.expressionCompiler)
         }
       case (IntSize,  result: LongExpressionResult) =>
         if(scheduler.isTrigger(symbol)) {

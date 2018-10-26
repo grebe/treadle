@@ -2,14 +2,21 @@
 
 package treadle.executable
 
+import org.objectweb.asm.MethodVisitor
+import org.objectweb.asm.Opcodes._
 import treadle.utils.{BitMasks, BitUtils}
 
 trait IntExpressionResult extends ExpressionResult {
   def apply(): Int
+  val expressionCompiler: Option[MethodVisitor => Unit] = None
 }
 
 case class GetIntConstant(n: Int) extends IntExpressionResult {
   def apply(): Int = n
+  override val expressionCompiler = Some({mv: MethodVisitor => {
+    mv.visitLdcInsn(n)
+    ()
+  }})
 }
 
 case class ToBig(f: FuncInt) extends BigExpressionResult {
@@ -36,8 +43,17 @@ case class ToInt(f: FuncBig) extends IntExpressionResult {
   def apply(): Int = f().toInt
 }
 
-case class AddInts(f1: FuncInt, f2: FuncInt) extends IntExpressionResult {
+case class AddInts(f1: FuncInt, f2: FuncInt, f1ExprCompiler: Option[MethodVisitor => Unit] = None, f2ExprCompiler: Option[MethodVisitor => Unit] = None) extends IntExpressionResult {
   def apply(): Int = f1() + f2()
+  override val expressionCompiler = (f1ExprCompiler, f2ExprCompiler) match {
+  case (Some(e1), Some(e2)) =>
+    Some({mv: MethodVisitor => {
+      e1(mv)
+      e2(mv)
+      mv.visitInsn(IADD)
+    }})
+  case _ => None
+  }
 }
 
 case class SubInts(f1: FuncInt, f2: FuncInt) extends IntExpressionResult {

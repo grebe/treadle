@@ -166,6 +166,15 @@ extends HasDataArrays {
 
   case class GetInt(index: Int) extends IntExpressionResult {
     def apply(): Int = intData(index)
+    override val expressionCompiler = Some({mv: MethodVisitor => {
+      val intName = Type.getType(classOf[CompiledAssigner]).getInternalName()
+      val owner = intName
+      mv.visitVarInsn(ALOAD, 0)
+      mv.visitMethodInsn(INVOKEVIRTUAL, owner, "intData", "()" + "[I", false)
+      mv.visitLdcInsn(index)
+      mv.visitInsn(IALOAD)
+      ()
+    }})
   }
 
   case class AssignInt(symbol: Symbol, expression: FuncInt, info: Info, expressionCompiler: Option[MethodVisitor => Unit] = None) extends Assigner {
@@ -174,6 +183,7 @@ extends HasDataArrays {
       println(s"Compiling AssignInt for ${symbol}")
       val assigner = compile()
       assigner.intData = intData
+      assigner.intFunc = expression
       assigner
     }
     def printClass(bs: Array[Byte]): Unit = {
@@ -190,9 +200,9 @@ extends HasDataArrays {
       val cl = new MyClassLoader(Thread.currentThread().getContextClassLoader())
       compileClass(cw)
       val b = cw.toByteArray()
-      printClass(b)
-      writeClass(b)
-      println("Class printed")
+      // printClass(b)
+      // writeClass(b)
+      // println("Class printed")
       val c: Class[_] = cl.defineClass(null, /*s"treadle.executable.CompiledAssignInt${index}",*/ b)
       // val ctor = c.getConstructor()
       c.newInstance().asInstanceOf[CompiledAssigner]
@@ -203,7 +213,6 @@ extends HasDataArrays {
       // make class that extends assigner
       val selfName = s"treadle/executable/CompiledAssignInt${index}"
       val intName = Type.getType(classOf[CompiledAssigner]).getInternalName()
-      // println("intName = $intName")
       cw.visit(
         V1_8,
         ACC_PUBLIC , //+ ACC_FINAL,
@@ -232,35 +241,31 @@ extends HasDataArrays {
       cw.visitEnd()
     }
     def compileMethod(mv: MethodVisitor, selfName: String): Unit = {
-      val owner = selfName
-      // val owner = "treadle/executable/package$CompiledAssigner"
-      // Type.getType(classOf[CompiledAssigner]).getDescriptor()
-      // println(s"owner = ${owner}")
-      mv.visitLdcInsn(5)
-      mv.visitLdcInsn(index)
+      val intName = Type.getType(classOf[CompiledAssigner]).getInternalName()
+      val owner = intName
+      // Get reference to array we will write into
       mv.visitVarInsn(ALOAD, 0)
-      mv.visitFieldInsn(GETFIELD, owner, "intData", "[I")
-      mv.visitVarInsn(IASTORE, 0)
+      mv.visitMethodInsn(INVOKEVIRTUAL, owner, "intData", "()" + "[I", false)
+      // Put index on the stack
+      mv.visitLdcInsn(index)
+      // Put value on the stack
+      expressionCompiler match {
+        case Some(e) => e(mv)
+        case None =>
+          // Cal intFunc() if we don't have a compiler for the expression
+          val expressionInternalName = Type.getType(classOf[FuncInt]).getInternalName()
+          val expressionDescriptor = Type.getType(classOf[FuncInt]).getDescriptor()
+          val unitDescriptor = Type.getType(Unit.getClass).getDescriptor()
+          mv.visitVarInsn(ALOAD, 0)
+          mv.visitMethodInsn(INVOKEVIRTUAL, owner, "intFunc", "()" + expressionDescriptor, false)
+          mv.visitMethodInsn(INVOKEINTERFACE, expressionInternalName, "apply$mcI$sp", "()" + "I" /*unitDescriptor*/, true)
+      }
+      mv.visitInsn(IASTORE)
       mv.visitInsn(RETURN)
-      // expressionCompiler match {
-      //   case Some(e) => e(mv)
-      //   case None =>
-      //     mv.visitLdcInsn(5)
-          // val expressionInternalName = Type.getType(classOf[FuncInt]).getInternalName()
-          // val expressionDescriptor = Type.getType(classOf[FuncInt]).getDescriptor()
-          // val unitDescriptor = Type.getType(Unit.getClass).getDescriptor()
-          // mv.visitVarInsn(ALOAD, 0)
-          // mv.visitFieldInsn(GETFIELD, owner, "intFunc", expressionDescriptor)
-          // mv.visitMethodInsn(INVOKEVIRTUAL, expressionInternalName, "apply", "()" + "I" /*unitDescriptor*/, false)
-      // }
-      // mv.visitInsn(IASTORE)
     }
 
     def runCompiled(): Unit = {
-      val c = classOf[CompiledAssigner]
-      val m = c.getDeclaredMethod("runCompiled")
-      m.invoke(compiledAssigner)
-      // compiledAssigner.runCompiled
+      compiledAssigner.runCompiled
     }
     def runLean(): Unit = { runCompiled()}
     //intData(index) = expression() }
