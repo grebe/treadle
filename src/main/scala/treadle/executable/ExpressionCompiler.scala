@@ -199,20 +199,20 @@ class ExpressionCompiler(
       def handleIntResult(e1: IntExpressionResult, e2: IntExpressionResult): ExpressionResult = {
         opCode match {
           case Add => AddInts(e1.apply, e2.apply, e1.expressionCompiler, e2.expressionCompiler)
-          case Sub => SubInts(e1.apply, e2.apply)
-          case Mul => MulInts(e1.apply, e2.apply)
-          case Div => DivInts(e1.apply, e2.apply)
-          case Rem => RemInts(e1.apply, e2.apply)
+          case Sub => SubInts(e1.apply, e2.apply, e1.expressionCompiler, e2.expressionCompiler)
+          case Mul => MulInts(e1.apply, e2.apply, e1.expressionCompiler, e2.expressionCompiler)
+          case Div => DivInts(e1.apply, e2.apply, e1.expressionCompiler, e2.expressionCompiler)
+          case Rem => RemInts(e1.apply, e2.apply, e1.expressionCompiler, e2.expressionCompiler)
 
-          case Eq  => EqInts(e1.apply,  e2.apply)
-          case Neq => NeqInts(e1.apply, e2.apply)
+          case Eq  => EqInts(e1.apply,  e2.apply, e1.expressionCompiler, e2.expressionCompiler)
+          case Neq => NeqInts(e1.apply, e2.apply, e1.expressionCompiler, e2.expressionCompiler)
           case Lt  => LtInts(e1.apply,  e2.apply)
           case Leq => LeqInts(e1.apply, e2.apply)
           case Gt  => GtInts(e1.apply,  e2.apply)
           case Geq => GeqInts(e1.apply, e2.apply)
 
-          case Dshl => DshlInts(e1.apply, e2.apply)
-          case Dshr => DshrInts(e1.apply, e2.apply)
+          case Dshl => DshlInts(e1.apply, e2.apply, e1.expressionCompiler, e2.expressionCompiler)
+          case Dshr => DshrInts(e1.apply, e2.apply, e1.expressionCompiler, e2.expressionCompiler)
 
           case And => AndInts(e1.apply, e2.apply, arg1Width.max(arg2Width))
           case Or  => OrInts(e1.apply,  e2.apply, arg1Width.max(arg2Width))
@@ -382,9 +382,9 @@ class ExpressionCompiler(
         case e1: IntExpressionResult =>
           op match {
             case Head => HeadInts(e1.apply, takeBits = param1, arg1Width)
-            case Tail => TailInts(e1.apply, toDrop = param1, arg1Width)
-            case Shl  => ShlInts(e1.apply, GetIntConstant(param1).apply)
-            case Shr  => ShrInts(e1.apply, GetIntConstant(param1).apply)
+            case Tail => TailInts(e1.apply, toDrop = param1, arg1Width, e1.expressionCompiler)
+            case Shl  => ShlInts(e1.apply, GetIntConstant(param1).apply, e1.expressionCompiler, GetIntConstant(param1).expressionCompiler)
+            case Shr  => ShrInts(e1.apply, GetIntConstant(param1).apply, e1.expressionCompiler, GetIntConstant(param1).expressionCompiler)
           }
         case e1: LongExpressionResult =>
           op match {
@@ -450,13 +450,13 @@ class ExpressionCompiler(
         case e1: IntExpressionResult =>
           op match {
             case Pad     => e1
-            case AsUInt  => AsUIntInts(e1.apply, width)
+            case AsUInt  => AsUIntInts(e1.apply, width, e1.expressionCompiler)
             case AsSInt  => AsSIntInts(e1.apply, width)
             case AsClock => e1
 
             case Cvt     => e1
-            case Neg     => NegInts(e1.apply)
-            case Not     => NotInts(e1.apply, width)
+            case Neg     => NegInts(e1.apply, e1.expressionCompiler)
+            case Not     => NotInts(e1.apply, width, e1.expressionCompiler)
 
             case Andr    => AndrInts(e1.apply, width)
             case Orr     => OrrInts(e1.apply,  width)
@@ -506,7 +506,7 @@ class ExpressionCompiler(
           (trueExpression, falseExpression) match {
 
             case (t: IntExpressionResult, f: IntExpressionResult) =>
-              MuxInts(c.apply, t.apply, f.apply)
+              MuxInts(c.apply, t.apply, f.apply, c.expressionCompiler, t.expressionCompiler, f.expressionCompiler)
             case (t: IntExpressionResult, f: LongExpressionResult) =>
               MuxLongs(c.apply, ToLong(t.apply).apply, f.apply)
             case (t: IntExpressionResult, f: BigExpressionResult) =>

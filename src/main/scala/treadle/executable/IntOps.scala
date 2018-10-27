@@ -2,7 +2,7 @@
 
 package treadle.executable
 
-import org.objectweb.asm.MethodVisitor
+import org.objectweb.asm.{Label, MethodVisitor}
 import org.objectweb.asm.Opcodes._
 import treadle.utils.{BitMasks, BitUtils}
 
@@ -56,15 +56,33 @@ case class AddInts(f1: FuncInt, f2: FuncInt, f1ExprCompiler: Option[MethodVisito
   }
 }
 
-case class SubInts(f1: FuncInt, f2: FuncInt) extends IntExpressionResult {
+case class SubInts(f1: FuncInt, f2: FuncInt, f1ExprCompiler: Option[MethodVisitor => Unit] = None, f2ExprCompiler: Option[MethodVisitor => Unit] = None) extends IntExpressionResult {
   def apply(): Int = f1() - f2()
+  override val expressionCompiler = (f1ExprCompiler, f2ExprCompiler) match {
+    case (Some(e1), Some(e2)) =>
+      Some({mv: MethodVisitor => {
+        e1(mv)
+        e2(mv)
+        mv.visitInsn(ISUB)
+      }})
+    case _ => None
+  }
 }
 
-case class MulInts(f1: FuncInt, f2: FuncInt) extends IntExpressionResult {
+case class MulInts(f1: FuncInt, f2: FuncInt, f1ExprCompiler: Option[MethodVisitor => Unit] = None, f2ExprCompiler: Option[MethodVisitor => Unit] = None) extends IntExpressionResult {
   def apply(): Int = f1() * f2()
+  override val expressionCompiler = (f1ExprCompiler, f2ExprCompiler) match {
+    case (Some(e1), Some(e2)) =>
+      Some({mv: MethodVisitor => {
+        e1(mv)
+        e2(mv)
+        mv.visitInsn(IMUL)
+      }})
+    case _ => None
+  }
 }
 
-case class DivInts(f1: FuncInt, f2: FuncInt) extends IntExpressionResult {
+case class DivInts(f1: FuncInt, f2: FuncInt, f1ExprCompiler: Option[MethodVisitor => Unit] = None, f2ExprCompiler: Option[MethodVisitor => Unit] = None) extends IntExpressionResult {
   def apply(): Int = {
     val divisor = f2()
     if(divisor == 0) {
@@ -74,9 +92,19 @@ case class DivInts(f1: FuncInt, f2: FuncInt) extends IntExpressionResult {
       f1() / divisor
     }
   }
+  override val expressionCompiler = (f1ExprCompiler, f2ExprCompiler) match {
+    case (Some(e1), Some(e2)) =>
+      Some({mv: MethodVisitor => {
+        // TODO check div by 0
+        e1(mv)
+        e2(mv)
+        mv.visitInsn(IDIV)
+      }})
+    case _ => None
+  }
 }
 
-case class RemInts(f1: FuncInt, f2: FuncInt) extends IntExpressionResult {
+case class RemInts(f1: FuncInt, f2: FuncInt, f1ExprCompiler: Option[MethodVisitor => Unit] = None, f2ExprCompiler: Option[MethodVisitor => Unit] = None) extends IntExpressionResult {
   def apply(): Int = {
     val modulus = f2()
     if(modulus == 0) {
@@ -86,22 +114,107 @@ case class RemInts(f1: FuncInt, f2: FuncInt) extends IntExpressionResult {
       f1() % modulus
     }
   }
+  override val expressionCompiler = (f1ExprCompiler, f2ExprCompiler) match {
+    case (Some(e1), Some(e2)) =>
+      Some({mv: MethodVisitor => {
+        // TODO check div by 0
+        e1(mv)
+        e2(mv)
+        mv.visitInsn(IREM)
+      }})
+    case _ => None
+  }
 }
 
-case class MuxInts(condition: FuncInt, trueClause: FuncInt, falseClause: FuncInt) extends IntExpressionResult {
+case class MuxInts(condition: FuncInt, trueClause: FuncInt, falseClause: FuncInt, condExprCompiler: Option[MethodVisitor => Unit] = None, trueExprCompiler: Option[MethodVisitor => Unit] = None, falseExprCompiler: Option[MethodVisitor => Unit] = None) extends IntExpressionResult {
   def apply(): Int = if(condition() > 0) trueClause() else falseClause()
+  override val expressionCompiler = (condExprCompiler, trueExprCompiler, falseExprCompiler) match {
+    // case (Some(c), Some(t), Some(f)) =>
+    //   Some({mv: MethodVisitor => {
+    //     // TODO check div by 0
+    //     val tLabel = new Label()
+    //     val endLabel = new Label()
+    //     mv.visitLdcInsn(0)
+    //     c(mv)
+    //     mv.visitJumpInsn(IF_ICMPGT, tLabel)
+    //     f(mv)
+    //     mv.visitJumpInsn(GOTO, endLabel)
+    //     mv.visitLabel(tLabel)
+    //     mv.visitFrame(F_SAME, 0, null, 0, null)
+    //     t(mv)
+    //     mv.visitLabel(endLabel)
+    //     mv.visitFrame(F_SAME, 0, null, 1, Array(INTEGER))
+    //     mv.visitInsn(NOP)
+    //   }})
+    case _ => None
+  }
 }
 
-case class EqInts(f1: FuncInt, f2: FuncInt) extends IntExpressionResult {
+case class EqInts(f1: FuncInt, f2: FuncInt, f1ExprCompiler: Option[MethodVisitor => Unit] = None, f2ExprCompiler: Option[MethodVisitor => Unit] = None) extends IntExpressionResult {
   def apply(): Int = if(f1() == f2()) 1 else 0
+  override val expressionCompiler = (f1ExprCompiler, f2ExprCompiler) match {
+    //case (Some(e1), Some(e2)) =>
+    //  Some({mv: MethodVisitor => {
+    //    val eqLabel = new Label()
+    //    val doneLabel = new Label()
+    //    e1(mv)
+    //    e2(mv)
+    //    mv.visitJumpInsn(IF_ICMPEQ, eqLabel)
+    //    mv.visitLdcInsn(0)
+    //    mv.visitJumpInsn(GOTO, doneLabel)
+    //    mv.visitLabel(eqLabel)
+    //    mv.visitFrame(F_SAME, 0, null, 0, null)
+    //    mv.visitLdcInsn(1)
+    //    mv.visitLabel(doneLabel)
+    //    mv.visitFrame(F_SAME, 0, null, 1, null)
+    //    mv.visitInsn(NOP)
+    //  }})
+    case _ => None
+  }
 }
 
-case class NeqInts(f1: FuncInt, f2: FuncInt) extends IntExpressionResult {
+case class NeqInts(f1: FuncInt, f2: FuncInt, f1ExprCompiler: Option[MethodVisitor => Unit] = None, f2ExprCompiler: Option[MethodVisitor => Unit] = None) extends IntExpressionResult {
   def apply(): Int = if(f1() != f2()) 1 else 0
+  override val expressionCompiler = (f1ExprCompiler, f2ExprCompiler) match {
+    // case (Some(e1), Some(e2)) =>
+    //   Some({mv: MethodVisitor => {
+    //     val neqLabel = new Label()
+    //     val doneLabel = new Label()
+    //     e1(mv)
+    //     e2(mv)
+    //     mv.visitJumpInsn(IF_ICMPNE, neqLabel)
+    //     mv.visitLdcInsn(0)
+    //     mv.visitJumpInsn(GOTO, doneLabel)
+    //     mv.visitLabel(neqLabel)
+    //     mv.visitFrame(F_SAME, 0, null, 0, null)
+    //     mv.visitLdcInsn(1)
+    //     mv.visitLabel(doneLabel)
+    //     mv.visitFrame(F_SAME, 0, null, 1, null)
+    //     mv.visitInsn(NOP)
+    //   }})
+    case _ => None
+  }
 }
 
-case class LtInts(f1: FuncInt, f2: FuncInt) extends IntExpressionResult {
+case class LtInts(f1: FuncInt, f2: FuncInt, f1ExprCompiler: Option[MethodVisitor => Unit] = None, f2ExprCompiler: Option[MethodVisitor => Unit] = None) extends IntExpressionResult {
   def apply(): Int = if(f1() < f2()) 1 else 0
+  override val expressionCompiler = (f1ExprCompiler, f2ExprCompiler) match {
+    // case (Some(e1), Some(e2)) =>
+    //   Some({mv: MethodVisitor => {
+    //     val ltLabel = new Label()
+    //     val doneLabel = new Label()
+    //     e1(mv)
+    //     e2(mv)
+    //     mv.visitJumpInsn(IFLT, ltLabel)
+    //     mv.visitLdcInsn(0)
+    //     mv.visitJumpInsn(GOTO, doneLabel)
+    //     mv.visitLabel(ltLabel)
+    //     mv.visitLdcInsn(1)
+    //     mv.visitLabel(doneLabel)
+    //     mv.visitInsn(NOP)
+    //   }})
+    case _ => None
+  }
 }
 
 case class LeqInts(f1: FuncInt, f2: FuncInt) extends IntExpressionResult {
@@ -116,10 +229,20 @@ case class GeqInts(f1: FuncInt, f2: FuncInt) extends IntExpressionResult {
   def apply(): Int = if(f1() >= f2()) 1 else 0
 }
 
-case class AsUIntInts(f1: FuncInt, width: Int) extends IntExpressionResult {
+case class AsUIntInts(f1: FuncInt, width: Int, f1ExprCompiler: Option[MethodVisitor => Unit] = None) extends IntExpressionResult {
   private val bitMasks = BitMasks.getBitMasksInts(width)
 
   def apply(): Int = f1() & bitMasks.allBitsMask
+  override val expressionCompiler = f1ExprCompiler match {
+    case Some(e) =>
+      Some({mv: MethodVisitor => {
+        // TODO check div by 0
+        e(mv)
+        mv.visitLdcInsn(bitMasks.allBitsMask)
+        mv.visitInsn(IAND)
+      }})
+    case _ => None
+  }
 }
 
 case class AsSIntInts(f1: FuncInt, width: Int) extends IntExpressionResult {
@@ -145,29 +268,86 @@ case class AsClockInts(f1: FuncInt) extends IntExpressionResult {
   def apply(): Int = if(f1() == 0) 0 else 1
 }
 
-case class ShlInts(f1: FuncInt, f2: FuncInt) extends IntExpressionResult {
+case class ShlInts(f1: FuncInt, f2: FuncInt, f1ExprCompiler: Option[MethodVisitor => Unit] = None, f2ExprCompiler: Option[MethodVisitor => Unit] = None) extends IntExpressionResult {
   def apply(): Int = f1() << f2()
+  override val expressionCompiler = (f1ExprCompiler, f2ExprCompiler) match {
+    case (Some(e1), Some(e2)) =>
+      Some({mv: MethodVisitor => {
+        // TODO check div by 0
+        e1(mv)
+        e2(mv)
+        mv.visitInsn(ISHL)
+      }})
+    case _ => None
+  }
 }
 
-case class ShrInts(f1: FuncInt, f2: FuncInt) extends IntExpressionResult {
+case class ShrInts(f1: FuncInt, f2: FuncInt, f1ExprCompiler: Option[MethodVisitor => Unit] = None, f2ExprCompiler: Option[MethodVisitor => Unit] = None) extends IntExpressionResult {
   def apply(): Int = f1() >> f2()
+  override val expressionCompiler = (f1ExprCompiler, f2ExprCompiler) match {
+    case (Some(e1), Some(e2)) =>
+      Some({mv: MethodVisitor => {
+        // TODO check div by 0
+        e1(mv)
+        e2(mv)
+        mv.visitInsn(ISHR)
+      }})
+    case _ => None
+  }
 }
 
-case class DshlInts(f1: FuncInt, f2: FuncInt) extends IntExpressionResult {
+case class DshlInts(f1: FuncInt, f2: FuncInt, f1ExprCompiler: Option[MethodVisitor => Unit] = None, f2ExprCompiler: Option[MethodVisitor => Unit] = None) extends IntExpressionResult {
   def apply(): Int = f1() << f2()
+  override val expressionCompiler = (f1ExprCompiler, f2ExprCompiler) match {
+    case (Some(e1), Some(e2)) =>
+      Some({mv: MethodVisitor => {
+        // TODO check div by 0
+        e1(mv)
+        e2(mv)
+        mv.visitInsn(ISHL)
+      }})
+    case _ => None
+  }
 }
 
-case class DshrInts(f1: FuncInt, f2: FuncInt) extends IntExpressionResult {
+case class DshrInts(f1: FuncInt, f2: FuncInt, f1ExprCompiler: Option[MethodVisitor => Unit] = None, f2ExprCompiler: Option[MethodVisitor => Unit] = None) extends IntExpressionResult {
   def apply(): Int = f1() >> f2()
+  override val expressionCompiler = (f1ExprCompiler, f2ExprCompiler) match {
+    case (Some(e1), Some(e2)) =>
+      Some({mv: MethodVisitor => {
+        // TODO check div by 0
+        e1(mv)
+        e2(mv)
+        mv.visitInsn(ISHR)
+      }})
+    case _ => None
+  }
 }
 
-case class NegInts(f1: FuncInt) extends IntExpressionResult {
+case class NegInts(f1: FuncInt, exprCompiler: Option[MethodVisitor => Unit] = None) extends IntExpressionResult {
   def apply(): Int = - f1()
+  override val expressionCompiler = exprCompiler match {
+    case Some(e) => Some({mv: MethodVisitor => {
+      mv.visitLdcInsn(0)
+      e(mv)
+      mv.visitInsn(ISUB)
+    }})
+    case _ => None
+  }
 }
 
-case class NotInts(f1: FuncInt, width: Int) extends IntExpressionResult {
+case class NotInts(f1: FuncInt, width: Int, exprCompiler: Option[MethodVisitor => Unit] = None) extends IntExpressionResult {
   private val mask = BitMasks.getBitMasksInts(width).allBitsMask
   def apply(): Int = (~ f1()) & mask
+  override val expressionCompiler = exprCompiler match {
+    case Some(e) => Some({mv: MethodVisitor => {
+      e(mv)
+      mv.visitInsn(INEG)
+      mv.visitLdcInsn(mask)
+      mv.visitInsn(IAND)
+    }})
+    case _ => None
+  }
 }
 
 case class AndInts(f1: FuncInt, f2: FuncInt, resultWidth: Int) extends IntExpressionResult {
@@ -253,11 +433,19 @@ case class HeadInts(f1: FuncInt, takeBits: Int, originalWidth: Int) extends IntE
   }
 }
 
-case class TailInts(f1: FuncInt, toDrop: Int, originalWidth: Int) extends IntExpressionResult {
+case class TailInts(f1: FuncInt, toDrop: Int, originalWidth: Int, e1: Option[MethodVisitor => Unit] = None) extends IntExpressionResult {
   private val mask: Int = (1 << (originalWidth - toDrop)) - 1
 
   def apply(): Int = {
     f1() & mask
+  }
+  override val expressionCompiler = e1 match {
+    case Some(e) => Some({mv: MethodVisitor => {
+      e(mv)
+      mv.visitLdcInsn(mask)
+      mv.visitInsn(IAND)
+    }})
+    case _ => None
   }
 }
 
